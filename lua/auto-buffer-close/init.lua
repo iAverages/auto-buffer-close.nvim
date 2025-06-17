@@ -9,6 +9,20 @@ end
 ---@type table<string, string>
 local buffer_states = {}
 
+---@class abc.Options
+---@field ignore_blank_lines boolean
+
+---@type abc.Options
+local options = {
+    ignore_blank_lines = true,
+}
+
+---@param lines string[]
+---@return string
+local function prepare_buffer_state(lines)
+    return table.concat(lines, options.ignore_blank_lines and "" or "\n")
+end
+
 local function on_buf_enter()
     local bufnr = vim.api.nvim_get_current_buf()
     local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
@@ -29,7 +43,7 @@ local function on_buf_enter()
         return false
     end
 
-    buffer_states[tostring(bufnr)] = table.concat(lines)
+    buffer_states[tostring(bufnr)] = prepare_buffer_state(lines)
 end
 
 local function on_buf_del(args)
@@ -56,12 +70,15 @@ local function on_buf_leave(args)
         return
     end
 
-    if stored_lines == table.concat(lines) then
+    if stored_lines == prepare_buffer_state(lines) then
         pcall(vim.api.nvim_buf_delete, bufnr, { force = false })
     end
 end
 
-function M.setup()
+---@param opts abc.Options
+function M.setup(opts)
+    options = vim.tbl_deep_extend("force", options, opts or {})
+
     vim.api.nvim_create_autocmd("BufEnter", {
         callback = on_buf_enter,
     })

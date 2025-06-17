@@ -18,6 +18,16 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 }
 ```
 
+## Configuration
+
+The plugin can be configured with the following options:
+
+```lua
+require("auto-buffer-close").setup({
+    ignore_blank_lines = true, -- Whether to ignore blank lines when comparing buffer content
+})
+```
+
 ## Usage
 
 Simply call the setup function in your Neovim configuration:
