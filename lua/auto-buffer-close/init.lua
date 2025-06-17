@@ -40,6 +40,12 @@ end
 
 local function on_buf_leave(args)
     local bufnr = args.buf
+
+    -- ignore modified buffers
+    if vim.api.nvim_buf_get_option(bufnr, "modified") then
+        return
+    end
+
     local stored_lines = buffer_states[tostring(bufnr)]
     if stored_lines == nil then
         return
