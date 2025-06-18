@@ -60,6 +60,12 @@ local function on_buf_leave(args)
         return
     end
 
+    -- dont close if we only have one buffer
+    local buffers = vim.fn.getbufinfo({ buflisted = 1 })
+    if #buffers <= 1 then
+        return false
+    end
+
     local stored_lines = buffer_states[tostring(bufnr)]
     if stored_lines == nil then
         return
