@@ -23,14 +23,9 @@ local function prepare_buffer_state(lines)
     return table.concat(lines, options.ignore_blank_lines and "" or "\n")
 end
 
-local function on_buf_enter()
-    local bufnr = vim.api.nvim_get_current_buf()
-    local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
-
-    if buffer_states[tostring(bufnr)] ~= nil then
-        return
-    end
-
+---@param bufnr number
+---@return boolean
+local function is_trackable_buffer(bufnr)
     -- dont track special buffers
     local buftype = vim.api.nvim_buf_get_option(bufnr, "buftype")
     if buftype ~= "" then
@@ -41,6 +36,27 @@ local function on_buf_enter()
     local bufname = vim.api.nvim_buf_get_name(bufnr)
     if bufname == "" then
         return false
+    end
+
+    return true
+end
+
+---@param bufnr number
+---@return boolean
+local function is_buffer_visible(bufnr)
+    return vim.fn.bufwinnr(bufnr) ~= -1
+end
+
+local function on_buf_enter()
+    local bufnr = vim.api.nvim_get_current_buf()
+    local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+
+    if buffer_states[tostring(bufnr)] ~= nil then
+        return
+    end
+
+    if not is_trackable_buffer(bufnr) then
+        return
     end
 
     buffer_states[tostring(bufnr)] = prepare_buffer_state(lines)
@@ -55,6 +71,13 @@ end
 local function on_buf_leave(args)
     local bufnr = args.buf
 
+    if not is_trackable_buffer(bufnr) then
+        return
+    end
+
+    if not is_buffer_visible(bufnr) then
+        return
+    end
     -- ignore modified buffers
     if vim.api.nvim_buf_get_option(bufnr, "modified") then
         return
@@ -63,7 +86,7 @@ local function on_buf_leave(args)
     -- dont close if we only have one buffer
     local buffers = vim.fn.getbufinfo({ buflisted = 1 })
     if #buffers <= 1 then
-        return false
+        return
     end
 
     local stored_lines = buffer_states[tostring(bufnr)]
