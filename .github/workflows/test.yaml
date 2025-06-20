@@ -1,4 +1,4 @@
-name: "Build"
+name: "test"
 
 on:
   push:
@@ -6,15 +6,16 @@ on:
       - '**'
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
     - uses: cachix/install-nix-action@v31
       with:
         github_access_token: ${{ secrets.GITHUB_TOKEN }}
-    - run: nix develop .#test
-    - run: just test
+    - run: |
+        nix develop .#test
+        just test
     - uses: actions/upload-artifact@v4
       with:
         name: ${{ runner.os }}-artifacts
