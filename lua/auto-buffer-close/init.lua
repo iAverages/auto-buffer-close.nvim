@@ -129,6 +129,15 @@ local function on_buf_leave(args)
     end
 end
 
+M._tests = {
+    get_buffer_states = function()
+        return buffer_states
+    end,
+    clean = function()
+        buffer_states = {}
+    end,
+}
+
 ---@param opts abc.Options
 function M.setup(opts)
     options = vim.tbl_deep_extend("force", options, opts or {})

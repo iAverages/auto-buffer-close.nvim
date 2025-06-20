@@ -10,15 +10,29 @@
     ...
   }:
     flake-utils.lib.eachDefaultSystem (system: let
-      pkgs = import nixpkgs {
-        inherit system;
+      pkgs = import nixpkgs {inherit system;};
+      neovim-test = pkgs.neovim.override {
+        configure = {
+          packages.test = with pkgs.vimPlugins; {
+            start = [plenary-nvim];
+          };
+        };
       };
     in {
-      devShells.default = with pkgs;
-        mkShell {
-          packages = [
-            just
-          ];
-        };
+      devShells = {
+        default = with pkgs;
+          mkShell {
+            packages = [
+              just
+              alejandra
+            ];
+          };
+        test = with pkgs;
+          mkShell {
+            packages = [
+              neovim-test
+            ];
+          };
+      };
     });
 }
