@@ -17,10 +17,31 @@ local options = {
     ignore_blank_lines = true,
 }
 
+local ignored_buffer_starts_with = { "term://" }
+
 ---@param lines string[]
 ---@return string
 local function prepare_buffer_state(lines)
     return table.concat(lines, options.ignore_blank_lines and "" or "\n")
+end
+
+---@param str string
+---@param start string
+---@return boolean
+local function starts_with(str, start)
+    return string.sub(str, 1, #start) == start
+end
+
+---@param array string[]
+---@param str string
+---@return boolean
+local function contains_starts_with(array, str)
+    for _, v in pairs(array) do
+        if starts_with(str, v) then
+            return true
+        end
+    end
+    return false
 end
 
 ---@param bufnr number
@@ -38,6 +59,10 @@ local function is_trackable_buffer(bufnr)
         return false
     end
 
+    if contains_starts_with(ignored_buffer_starts_with, bufname) then
+        return false
+    end
+
     return true
 end
 
@@ -47,8 +72,8 @@ local function is_buffer_visible(bufnr)
     return vim.fn.bufwinnr(bufnr) ~= -1
 end
 
-local function on_buf_enter()
-    local bufnr = vim.api.nvim_get_current_buf()
+local function on_buf_enter(arg)
+    local bufnr = arg.buf
     local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
 
     if buffer_states[tostring(bufnr)] ~= nil then
