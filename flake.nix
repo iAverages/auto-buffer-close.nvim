@@ -31,6 +31,7 @@
           mkShell {
             packages = [
               neovim-test
+              just
             ];
           };
       };
