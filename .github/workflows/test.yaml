@@ -13,9 +13,7 @@ jobs:
     - uses: cachix/install-nix-action@v31
       with:
         github_access_token: ${{ secrets.GITHUB_TOKEN }}
-    - run: |
-        nix develop .#test
-        just test
+    - run: nix develop .#test --command just test
     - uses: actions/upload-artifact@v4
       with:
         name: ${{ runner.os }}-artifacts
