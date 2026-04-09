@@ -5,6 +5,17 @@ local abc = require("auto-buffer-close.init")
 describe("buffer tracking logic", function()
     local test_counter = 0
 
+    local function named_buffer(name)
+        local buf = vim.api.nvim_create_buf(true, false)
+        vim.api.nvim_buf_set_name(buf, name)
+        return buf
+    end
+
+    local function wait_for(condition)
+        local ok = vim.wait(1000, condition, 20)
+        assert.True(ok)
+    end
+
     before_each(function()
         test_counter = test_counter + 1
         abc._tests.clean()
@@ -12,9 +23,7 @@ describe("buffer tracking logic", function()
     end)
 
     after_each(function()
-        vim.cmd("autocmd! BufEnter")
-        vim.cmd("autocmd! BufDelete")
-        vim.cmd("autocmd! BufLeave")
+        pcall(vim.api.nvim_del_augroup_by_name, "auto-buffer-close")
         -- Clean up any remaining buffers
         for _, buf in ipairs(vim.api.nvim_list_bufs()) do
             if vim.api.nvim_buf_is_valid(buf) and vim.api.nvim_buf_get_name(buf):match("^/tmp/test") then
@@ -25,8 +34,7 @@ describe("buffer tracking logic", function()
 
     describe("is_trackable_buffer", function()
         it("tracks normal file buffers", function()
-            local buf = vim.api.nvim_create_buf(true, false)
-            vim.api.nvim_buf_set_name(buf, "/tmp/test_" .. test_counter .. "_1.txt")
+            local buf = named_buffer("/tmp/test_" .. test_counter .. "_1.txt")
             vim.api.nvim_set_current_buf(buf)
 
             -- Should be tracked
@@ -62,8 +70,7 @@ describe("buffer tracking logic", function()
 
         it("ignores terminal buffers", function()
             -- Create actual terminal buffer
-            local buf = vim.api.nvim_create_buf(true, false)
-            vim.api.nvim_buf_set_name(buf, "term://test_" .. test_counter)
+            local buf = named_buffer("term://test_" .. test_counter)
             vim.api.nvim_set_current_buf(buf)
 
             -- Should not be tracked
@@ -71,9 +78,8 @@ describe("buffer tracking logic", function()
         end)
 
         it("ignores nofile buffers (like file trees)", function()
-            local buf = vim.api.nvim_create_buf(true, false)
+            local buf = named_buffer("NvimTree_" .. test_counter)
             vim.api.nvim_buf_set_option(buf, "buftype", "nofile")
-            vim.api.nvim_buf_set_name(buf, "NvimTree_" .. test_counter)
             vim.api.nvim_set_current_buf(buf)
 
             -- Should not be tracked
@@ -81,28 +87,51 @@ describe("buffer tracking logic", function()
         end)
 
         it("ignores prompt buffers (like telescope)", function()
-            local buf = vim.api.nvim_create_buf(true, false)
+            local buf = named_buffer("Telescope_" .. test_counter)
             vim.api.nvim_buf_set_option(buf, "buftype", "prompt")
-            vim.api.nvim_buf_set_name(buf, "Telescope_" .. test_counter)
             vim.api.nvim_set_current_buf(buf)
 
             -- Should not be tracked
             assert.is_nil(abc._tests.get_buffer_states()[tostring(buf)])
         end)
+
+        it("ignores neo-tree filetype buffers", function()
+            local buf = named_buffer("/tmp/test_" .. test_counter .. "_neotree.txt")
+            vim.api.nvim_buf_set_option(buf, "filetype", "neo-tree")
+            vim.api.nvim_set_current_buf(buf)
+
+            assert.is_nil(abc._tests.get_buffer_states()[tostring(buf)])
+        end)
     end)
 
     describe("buffer visibility and auto-close", function()
+        it("closes unchanged hidden buffer", function()
+            local buf1 = named_buffer("/tmp/test_" .. test_counter .. "_close1.txt")
+            local buf2 = named_buffer("/tmp/test_" .. test_counter .. "_close2.txt")
+
+            vim.api.nvim_buf_set_lines(buf1, 0, -1, false, { "initial" })
+            vim.api.nvim_buf_set_lines(buf2, 0, -1, false, { "other" })
+            vim.api.nvim_buf_set_option(buf1, "modified", false)
+            vim.api.nvim_buf_set_option(buf2, "modified", false)
+
+            vim.api.nvim_set_current_buf(buf1)
+            vim.api.nvim_set_current_buf(buf2)
+
+            wait_for(function()
+                return not vim.api.nvim_buf_is_valid(buf1)
+            end)
+        end)
+
         it("does not close buffer visible in split", function()
             -- Create two normal buffers with unique names
-            local buf1 = vim.api.nvim_create_buf(true, false)
-            local buf2 = vim.api.nvim_create_buf(true, false)
-
-            vim.api.nvim_buf_set_name(buf1, "/tmp/test_" .. test_counter .. "_split1.txt")
-            vim.api.nvim_buf_set_name(buf2, "/tmp/test_" .. test_counter .. "_split2.txt")
+            local buf1 = named_buffer("/tmp/test_" .. test_counter .. "_split1.txt")
+            local buf2 = named_buffer("/tmp/test_" .. test_counter .. "_split2.txt")
 
             -- Set some content
             vim.api.nvim_buf_set_lines(buf1, 0, -1, false, { "line1" })
             vim.api.nvim_buf_set_lines(buf2, 0, -1, false, { "line2" })
+            vim.api.nvim_buf_set_option(buf1, "modified", false)
+            vim.api.nvim_buf_set_option(buf2, "modified", false)
 
             -- Enter buf1 to track it
             vim.api.nvim_set_current_buf(buf1)
@@ -120,12 +149,34 @@ describe("buffer tracking logic", function()
             vim.cmd("close") -- Close split
         end)
 
-        it("does not close modified buffer", function()
-            local buf1 = vim.api.nvim_create_buf(true, false)
-            local buf2 = vim.api.nvim_create_buf(true, false)
+        it("does not close a file buffer when moving focus to a sidebar window", function()
+            local buf1 = named_buffer("/tmp/test_" .. test_counter .. "_sidebar1.txt")
+            local sidebar = named_buffer("neo-tree filesystem [1]")
 
-            vim.api.nvim_buf_set_name(buf1, "/tmp/test_" .. test_counter .. "_mod1.txt")
-            vim.api.nvim_buf_set_name(buf2, "/tmp/test_" .. test_counter .. "_mod2.txt")
+            vim.api.nvim_buf_set_lines(buf1, 0, -1, false, { "line1" })
+            vim.api.nvim_buf_set_option(buf1, "modified", false)
+            vim.api.nvim_buf_set_option(sidebar, "buftype", "nofile")
+            vim.api.nvim_buf_set_option(sidebar, "filetype", "neo-tree")
+
+            vim.api.nvim_set_current_buf(buf1)
+
+            vim.cmd("vsplit")
+            local sidebar_win = vim.api.nvim_get_current_win()
+            vim.api.nvim_win_set_buf(sidebar_win, sidebar)
+
+            wait_for(function()
+                return vim.api.nvim_buf_is_valid(buf1)
+            end)
+
+            assert.True(vim.api.nvim_buf_is_valid(buf1))
+            assert.are.same(1, #vim.fn.win_findbuf(buf1))
+
+            vim.cmd("close")
+        end)
+
+        it("does not close modified buffer", function()
+            local buf1 = named_buffer("/tmp/test_" .. test_counter .. "_mod1.txt")
+            local buf2 = named_buffer("/tmp/test_" .. test_counter .. "_mod2.txt")
 
             -- Enter buf1 and track initial state
             vim.api.nvim_set_current_buf(buf1)
@@ -140,6 +191,43 @@ describe("buffer tracking logic", function()
 
             -- buf1 should still exist (it's modified)
             assert.True(vim.api.nvim_buf_is_valid(buf1))
+        end)
+
+        it("does not close a buffer that was edited and then saved", function()
+            local buf1 = named_buffer("/tmp/test_" .. test_counter .. "_saved1.txt")
+            local buf2 = named_buffer("/tmp/test_" .. test_counter .. "_saved2.txt")
+
+            vim.api.nvim_buf_set_lines(buf1, 0, -1, false, { "initial" })
+            vim.api.nvim_buf_set_lines(buf2, 0, -1, false, { "other" })
+            vim.api.nvim_buf_set_option(buf1, "modified", false)
+            vim.api.nvim_buf_set_option(buf2, "modified", false)
+
+            vim.api.nvim_set_current_buf(buf1)
+            vim.api.nvim_buf_set_lines(buf1, 0, -1, false, { "changed" })
+            vim.api.nvim_buf_set_option(buf1, "modified", true)
+            vim.api.nvim_exec_autocmds("BufModifiedSet", { buffer = buf1 })
+            vim.api.nvim_buf_set_option(buf1, "modified", false)
+
+            assert.True(abc._tests.get_edited_buffers()[tostring(buf1)])
+
+            vim.api.nvim_set_current_buf(buf2)
+
+            wait_for(function()
+                return vim.api.nvim_buf_is_valid(buf1)
+            end)
+
+            assert.True(vim.api.nvim_buf_is_valid(buf1))
+        end)
+    end)
+
+    describe("setup", function()
+        it("replaces its autocmds when setup is called multiple times", function()
+            abc.setup({})
+            abc.setup({})
+
+            local autocmds = vim.api.nvim_get_autocmds({ group = "auto-buffer-close" })
+
+            assert.are.same(5, #autocmds)
         end)
     end)
 end)
